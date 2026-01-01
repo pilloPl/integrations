@@ -2091,6 +2091,8 @@ Core może to obsłużyć jako:
 - **Edycja DebtPart** - modyfikacja z pełną historią zmian
 - **Nowy DebtPart ze starego** - split z korektą (zachowuje genealogię)
 
++ ewentualna korekta odsetek
+
 **Scenariusz 2: Aktywny RepaymentPlan**
 
 Bardziej skomplikowane - do której raty dodać nowe kwoty?
@@ -2116,7 +2118,7 @@ POST /api/debt-part/{id}/balance-correction
   "allocationStrategy": "TO_LAST_INSTALLMENT"  // lub PROPORTIONAL, NEW_INSTALLMENT
 }
 ```
-
++ ewentualna korekta odsetek
 Sprecyzujcie wymagania, a Core doda odpowiednie API.
 
 ---
