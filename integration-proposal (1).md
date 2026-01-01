@@ -858,16 +858,6 @@ RepaymentPlan definiuje:
 | **Zmiana planu** | Dezaktywacja starego, aktywacja nowego - historia zachowana |
 | **Negocjacje** | Tworzenie kolejnych propozycji aż do akceptacji |
 
-**Statusy RepaymentPlan:**
-
-| Status | Znaczenie |
-|--------|-----------|
-| `DRAFT` | Szkic, jeszcze nie ofertowany |
-| `OFFERED` | Zaoferowany klientowi, czeka na decyzję |
-| `ACTIVE` | Aktywny, według niego obsługujemy dług |
-| `COMPLETED` | Zakończony (spłacony lub zastąpiony) |
-| `CANCELLED` | Anulowany (np. klient wybrał inny) |
-
 ---
 
 ## 5. Payments
