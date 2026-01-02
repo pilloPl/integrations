@@ -567,6 +567,7 @@ Core dostarcza narzędzia do zarządzania cząstkami - logika biznesowa jest po 
 ---
 
 ### Koszty niewpływające na saldo
+@MichalMac prosba o weryfikacje tej sekcji - dopisanie info o approvalach/rejectach etc 
 
 Nie wszystkie koszty związane z obsługą długu wpływają na saldo księgowe (Accounting). Przykłady:
 - Koszty wysyłki monitów
@@ -574,12 +575,11 @@ Nie wszystkie koszty związane z obsługą długu wpływają na saldo księgowe 
 - Koszty korespondencji
 - Opłaty administracyjne
 
-Takie koszty można **dopisywać** do długu w różny sposób:
+Takie koszty można **dopisywać** do długu w następujący sposób:
 
 | Poziom | Identyfikator | Opis |
 |--------|---------------|------|
 | Dług biznesowy | `debtId` | Koszt dotyczy całego długu (wszystkich cząstek) |
-| Cząstka | `debtPartId` | Koszt dotyczy konkretnej cząstki |
 
 **API do zarządzania kosztami:**
 
@@ -587,33 +587,38 @@ Takie koszty można **dopisywać** do długu w różny sposób:
 # Dodanie kosztu do całego długu (debtId)
 POST /api/costs
 {
-  "debtId": "KREDYT-2024-00123",
-  "type": "CORRESPONDENCE",
-  "amount": 15.00,
-  "currency": "PLN",
-  "description": "Wysyłka monitu listem poleconym",
-  "occurredAt": "2024-03-15"
+  "debtId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "payer": {
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "account": "PL18123456781122334455667788"
+  },
+  "payee": {
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "account": "PL18123456781122334455667788"
+  },
+  "currency": "USD",
+  "sourceDocumentNumber": "string",
+  "costDate": "2026-01-02T13:28:45.955Z",
+  "dueDate": "2026-01-02T13:28:45.955Z",
+  "items": [
+    {
+      "productId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "quantity": 0.1,
+      "price": {
+        "amount": 0.1,
+        "currencyCode": "USD"
+      }
+    }
+  ],
+  "approve": true,
+  "generateOutgoingPayment": true
 }
-
-# Dodanie kosztu do konkretnej cząstki
-POST /api/costs
-{
-  "debtPartId": "dp-aaa-111",
-  "type": "BIK_REPORT",
-  "amount": 25.00,
-  "currency": "PLN",
-  "description": "Raport BIK dla procesu sądowego"
-}
-
-# Usunięcie/anulowanie kosztu
-DELETE /api/costs/{costId}
 
 # Lista kosztów dla długu
 GET /api/costs/by-debt/{debtId}
-
-# Lista kosztów dla cząstki
-GET /api/costs/by-debt-part/{debtPartId}
 ```
+
+**W razie konieczności** API może zostać rozszerzone o endpointu przypisujący koszt do cząstki długu (debtParta).
 
 ---
 
