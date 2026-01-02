@@ -17,7 +17,7 @@
 ### 2. Czym jest DebtPart?
 - [Koncepcja DebtPart](#koncepcja-debtpart)
 - [Jak Dług mapuje się na DebtParty?](#jak-dług-mapuje-się-na-debtparty)
-- [Dwa identyfikatory: Parent ID i DebtPart ID](#dwa-identyfikatory-parent-id-i-debtpart-id)
+- [Dwa identyfikatory: Debt ID i DebtPart ID](#dwa-identyfikatory-debt-id-i-debtpart-id)
   - [Przypadek 1: Dług = 1 DebtPart](#przypadek-1-dług--1-debtpart-całość-w-jednym-procesie)
   - [Przypadek 2: Podział 50/50](#przypadek-2-dług--2-debtparty-podział-5050-między-procesy)
   - [Przypadek 3: Nakładające się (160% ≠ 100%)](#przypadek-3-dług--2-debtparty-nakładające-się---nie-sumują-się-do-100)
@@ -257,7 +257,7 @@ DOBRZE: Proces polski konfiguruje swój Product z:
         AccrualCalculation { Unit = Months, ... }
 
         Core NIE WIE, że to Polska czy Rumunia.
-        Core tylko wykonuje AccrualTask zgodnie z konfiguracją.
+        Core tylko nalicza odsetki zgodnie z konfiguracją.
 ```
 
 #### 2. Kolejność alokacji wpłat
@@ -268,10 +268,10 @@ DOBRZE: Proces polski konfiguruje swój Product z:
 ```
 
 ```
-DOBRZE: Proces hiszpański rejestruje RepaymentPlan z:
+DOBRZE: Proces hiszpański rejestruje RepaymentPlan z produktem:
         AllocationOrder = [Interest, Fee, Principal]
 
-        Proces niemiecki rejestruje:
+        Proces niemiecki rejestruje produkt:
         AllocationOrder = [Principal, Interest, Fee]
 
         Core NIE WIE, że "Hiszpania najpierw odsetki".
@@ -313,11 +313,11 @@ DOBRZE: Proces polski definiuje Product z możliwymi przejściami:
             ──[Condition: RepaymentsOnTime, counter=3]──►
         ProductElement "PromoRate" (annualRate: 8%)
 
-        Gdy Fulfillment spełnia warunek, Core automatycznie
+        Gdy warunek jest spełniony warunek, Core automatycznie
         przełącza na nowy ProductElement.
 
         Core NIE WIE, że to "polska promocja za terminowość".
-        Core sprawdza Condition i wykonuje ProductChange.
+        Core sprawdza Condition lub otrzymuje komunikat o spełnionym Condition z zewnątrz i wykonuje zmianę ProductElementu.
 ```
 
 #### 5. Harmonogramy z kalendarzem świąt
@@ -343,7 +343,7 @@ DOBRZE: Proces polski tworzy ScheduleTemplate z:
 
 ---
 
-**Podsumowanie:** Core operuje na abstrakcjach (`AccrualCalculation`, `AllocationOrder`, `Limits`,
+**Podsumowanie:** Core operuje na abstrakcjach (np. `AccrualCalculation`, `AllocationOrder`, `Limits`,
 `Condition`, `HolidaysCalendar`). Słowa "Polska", "Rumunia", "sądówka", "polubówka"
 **nie istnieją w kodzie Core** - to procesy mapują swoje koncepty na konfigurację.
 
@@ -381,21 +381,21 @@ To zależy od tego, jak procesy chcą obsługiwać dług.
 > **Uwaga:** Poniżej przedstawiamy kilka typowych przypadków - to nie jest wyczerpująca lista.
 > W praktyce kombinacje mogą być dowolne, w zależności od potrzeb biznesowych.
 
-### Dwa identyfikatory: Parent ID i DebtPart ID
+### Dwa identyfikatory: Debt ID i DebtPart ID
 
 Procesy operują **dwoma identyfikatorami**:
 
 | ID | Znaczenie |
 |----|-----------|
-| **Parent ID** | ID długu biznesowego (np. umowy kredytowej) |
+| **Debt ID** | ID długu biznesowego (np. umowy kredytowej) |
 | **DebtPart ID** | ID konkretnej cząstki w Core |
 
-**Jeden Parent ID → wiele DebtPart ID.** To kluczowa relacja - jeden dług biznesowy może mieć wiele cząstek.
+**Jeden Debt ID → wiele DebtPart ID.** To kluczowa relacja - jeden dług biznesowy może mieć wiele cząstek.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                                                                             │
-│   Parent ID: "KREDYT-2024-00123"                                            │
+│   Debt ID: "KREDYT-2024-00123"                                            │
 │   (dług biznesowy - ten sam dla wszystkich cząstek)                         │
 │                                                                             │
 │   ┌─────────────────────────┐    ┌─────────────────────────┐                │
@@ -405,7 +405,7 @@ Procesy operują **dwoma identyfikatorami**:
 │   │  50% długu              │    │  50% długu              │                │
 │   └─────────────────────────┘    └─────────────────────────┘                │
 │                                                                             │
-│   Oba DebtParty mają ten sam Parent ID = "KREDYT-2024-00123"                │
+│   Oba DebtParty mają ten sam Debt ID = "KREDYT-2024-00123"                │
 │                             │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -413,14 +413,14 @@ Procesy operują **dwoma identyfikatorami**:
 
 **Jak to działa:**
 
-1. **Proces tworzy DebtPart** i przekazuje swój Parent ID (ID długu biznesowego)
+1. **Proces tworzy DebtPart** i przekazuje swój Debt ID (ID długu biznesowego)
 2. **Core zwraca DebtPart ID** - unikalny identyfikator cząstki
 3. **Proces zapamiętuje oba ID** - wie, że DebtPart "aaa..." należy do długu "KREDYT-2024-00123"
-4. **Gdy dług jest dzielony** - każda nowa cząstka dostaje nowy DebtPart ID, ale Parent ID pozostaje ten sam
+4. **Gdy dług jest dzielony** - każda nowa cząstka dostaje nowy DebtPart ID, ale Debt ID pozostaje ten sam
 
 **Korzyści:**
 
-- **Elastyczne API** - operacje mogą działać na poziomie konkretnego DebtPart ID lub na wszystkich cząstkach danego Parent ID
+- **Elastyczne API** - operacje mogą działać na poziomie konkretnego DebtPart ID lub na wszystkich cząstkach danego Debt ID
 - **Widok pojedynczy** - stan konkretnej cząstki (jeden proces, jedna część długu)
 - **Widok zbiorczy** - stan wszystkich cząstek pod jednym długiem biznesowym (wszystkie procesy, cały dług)
 - **Separacja odpowiedzialności** - Core nie musi rozumieć pojęcia "dług" - to tylko atrybut przekazany przez proces
@@ -435,12 +435,12 @@ Cały dług procesowany polubownie - jeden DebtPart pokrywa 100% długu.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│   Parent ID: "KREDYT-2024-00123"                                │
+│   Debt ID: "KREDYT-2024-00123"                                │
 │   Kwota: 100 000 PLN kapitału + 10 000 PLN odsetek              │
 │                                                                 │
 │   ┌─────────────────────────────────────────────────────────┐   │
 │   │  DebtPart ID: "dp-aaa-111"                              │   │
-│   │  Parent ID:   "KREDYT-2024-00123"                       │   │
+│   │  Debt ID:   "KREDYT-2024-00123"                       │   │
 │   │                                                         │   │
 │   │  PRINCIPAL: 100 000 PLN                                 │   │
 │   │  INTEREST:   10 000 PLN                                 │   │
@@ -448,7 +448,7 @@ Cały dług procesowany polubownie - jeden DebtPart pokrywa 100% długu.
 │   │  Proces: POLUBOWNY                                      │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
-│   Parent ID = DebtPart ID (w sensie: 1 dług = 1 cząstka)        │
+│   Debt ID = DebtPart ID (w sensie: 1 dług = 1 cząstka)        │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -461,12 +461,12 @@ Połowa długu idzie sądownie, połowa polubownie. Dwa osobne DebtParty, każdy
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│   Parent ID: "KREDYT-2024-00123"                                │
+│   Debt ID: "KREDYT-2024-00123"                                │
 │   Kwota: 100 000 PLN kapitału + 10 000 PLN odsetek              │
 │                                                                 │
 │   ┌───────────────────────────┐ ┌───────────────────────────┐   │
 │   │  DebtPart ID: "dp-aaa"    │ │  DebtPart ID: "dp-bbb"    │   │
-│   │  Parent ID: "KREDYT-..."  │ │  Parent ID: "KREDYT-..."  │   │
+│   │  Debt ID: "KREDYT-..."  │ │  Debt ID: "KREDYT-..."  │   │
 │   │                           │ │                           │   │
 │   │  PRINCIPAL: 50 000 PLN    │ │  PRINCIPAL: 50 000 PLN    │   │
 │   │  INTEREST:   5 000 PLN    │ │  INTEREST:   5 000 PLN    │   │
@@ -474,7 +474,7 @@ Połowa długu idzie sądownie, połowa polubownie. Dwa osobne DebtParty, każdy
 │   │  Proces: SĄDOWY           │ │  Proces: POLUBOWNY        │   │
 │   └───────────────────────────┘ └───────────────────────────┘   │
 │                                                                 │
-│   Ten sam Parent ID → procesy wiedzą, że to jeden dług          │
+│   Ten sam Debt ID → procesy wiedzą, że to jeden dług          │
 │   SUMA: 100% długu = 50% + 50%                                  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -489,12 +489,12 @@ Proces sądowy dochodzi 100% długu, proces polubowny równolegle próbuje odzys
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│   Parent ID: "KREDYT-2024-00123"                                │
+│   Debt ID: "KREDYT-2024-00123"                                │
 │   Kwota: 100 000 PLN kapitału + 10 000 PLN odsetek              │
 │                                                                 │
 │   ┌─────────────────────────────────────────────────────────┐   │
 │   │  DebtPart ID: "dp-aaa"                                  │   │
-│   │  Parent ID:   "KREDYT-2024-00123"                       │   │
+│   │  Debt ID:   "KREDYT-2024-00123"                       │   │
 │   │                                                         │   │
 │   │  PRINCIPAL: 100 000 PLN                                 │   │
 │   │  INTEREST:   10 000 PLN                                 │   │
@@ -504,7 +504,7 @@ Proces sądowy dochodzi 100% długu, proces polubowny równolegle próbuje odzys
 │                                                                 │
 │   ┌─────────────────────────────────────────────────────────┐   │
 │   │  DebtPart ID: "dp-bbb"                                  │   │
-│   │  Parent ID:   "KREDYT-2024-00123"  ← ten sam!           │   │
+│   │  Debt ID:   "KREDYT-2024-00123"  ← ten sam!           │   │
 │   │                                                         │   │
 │   │  PRINCIPAL: 60 000 PLN                                  │   │
 │   │  INTEREST:   6 000 PLN                                  │   │
@@ -514,7 +514,7 @@ Proces sądowy dochodzi 100% długu, proces polubowny równolegle próbuje odzys
 │                                                                 │
 │   SUMA: 160% ≠ 100%  ← TO JEST OK!                              │
 │                                                                 │
-│   Ten sam Parent ID → procesy wiedzą, że to ten sam dług        │
+│   Ten sam Debt ID → procesy wiedzą, że to ten sam dług        │
 │   i mogą synchronizować wpłaty między sobą.                     │
 │                                                                 │
 │   Scenariusz: Sądownie dochodzimy pełnej kwoty (na wypadek      │
@@ -533,12 +533,12 @@ Kapitał procesowany sądownie, odsetki polubownie (np. po wyroku sądowym dotyc
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│   Parent ID: "KREDYT-2024-00123"                                │
+│   Debt ID: "KREDYT-2024-00123"                                │
 │   Kwota: 100 000 PLN kapitału + 10 000 PLN odsetek              │
 │                                                                 │
 │   ┌───────────────────────────┐ ┌───────────────────────────┐   │
 │   │  DebtPart ID: "dp-aaa"    │ │  DebtPart ID: "dp-bbb"    │   │
-│   │  Parent ID: "KREDYT-..."  │ │  Parent ID: "KREDYT-..."  │   │
+│   │  Debt ID: "KREDYT-..."  │ │  Debt ID: "KREDYT-..."  │   │
 │   │                           │ │                           │   │
 │   │  PRINCIPAL: 100 000 PLN   │ │  INTEREST: 10 000 PLN     │   │
 │   │                           │ │                           │   │
@@ -546,7 +546,7 @@ Kapitał procesowany sądownie, odsetki polubownie (np. po wyroku sądowym dotyc
 │   │  (tylko kapitał)          │ │  (tylko odsetki)          │   │
 │   └───────────────────────────┘ └───────────────────────────┘   │
 │                                                                 │
-│   Ten sam Parent ID → różne komponenty tego samego długu        │
+│   Ten sam Debt ID → różne komponenty tego samego długu        │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -558,7 +558,7 @@ Kapitał procesowany sądownie, odsetki polubownie (np. po wyroku sądowym dotyc
 **Core nie pilnuje, czy DebtParty "sumują się" do jakiegoś długu.**
 
 To odpowiedzialność procesów, żeby wiedzieć:
-- Które DebtParty należą do tego samego długu biznesowego (przez Parent ID)
+- Które DebtParty należą do tego samego długu biznesowego (przez Debt ID)
 - Jak synchronizować wpłaty między procesami
 - Kiedy zamknąć jeden proces po sukcesie drugiego
 
@@ -578,16 +578,16 @@ Takie koszty można **dopisywać** do długu w różny sposób:
 
 | Poziom | Identyfikator | Opis |
 |--------|---------------|------|
-| Dług biznesowy | `parentId` | Koszt dotyczy całego długu (wszystkich cząstek) |
+| Dług biznesowy | `debtId` | Koszt dotyczy całego długu (wszystkich cząstek) |
 | Cząstka | `debtPartId` | Koszt dotyczy konkretnej cząstki |
 
 **API do zarządzania kosztami:**
 
 ```
-# Dodanie kosztu do całego długu (parentId)
+# Dodanie kosztu do całego długu (debtId)
 POST /api/costs
 {
-  "parentId": "KREDYT-2024-00123",
+  "debtId": "KREDYT-2024-00123",
   "type": "CORRESPONDENCE",
   "amount": 15.00,
   "currency": "PLN",
@@ -609,7 +609,7 @@ POST /api/costs
 DELETE /api/costs/{costId}
 
 # Lista kosztów dla długu
-GET /api/costs/by-parent/{parentId}
+GET /api/costs/by-debt/{debtId}
 
 # Lista kosztów dla cząstki
 GET /api/costs/by-debt-part/{debtPartId}
@@ -891,7 +891,7 @@ POST /api/payments
   "amount": 5000.00,
   "currency": "PLN",
   "debtorId": "jan-kowalski-id",
-  "parentId": "KREDYT-2024-00123",    // ← tylko dług biznesowy
+  "debtId": "KREDYT-2024-00123",    // ← tylko dług biznesowy
   "paymentDate": "2024-03-15"
 }
 ```
@@ -908,7 +908,7 @@ POST /api/payments
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                                                                             │
 │   Wpłata 5000 PLN od "jan-kowalski-id"                                      │
-│   Parent ID: "KREDYT-2024-00123"                                            │
+│   Debt ID: "KREDYT-2024-00123"                                            │
 │   Brak wskazanego RepaymentPlan                                             │
 │                                                                             │
 │                            │                                                │
@@ -958,7 +958,7 @@ POST /api/payment-resolution/strategy
 # Ustawienie strategii dla konkretnego długu
 POST /api/payment-resolution/strategy
 {
-  "parentId": "KREDYT-2024-00123",
+  "debtId": "KREDYT-2024-00123",
   "strategy": "OLDEST_FIRST"
 }
 
@@ -970,7 +970,7 @@ GET /api/payment-resolution/strategies
 ```
 
 **Priorytet strategii:**
-1. Strategia per `parentId` (jeśli ustawiona)
+1. Strategia per `debtId` (jeśli ustawiona)
 2. Strategia per `debtorId` (jeśli ustawiona)
 3. Domyślna strategia systemu (`HIGHEST_DEBT`)
 
@@ -986,7 +986,7 @@ De facto Payment Resolution mógłby obsługiwać **dwa poziomy mapowania**:
 │         │                                                                   │
 │         ▼                                                                   │
 │   ┌─────────────────────────────────┐                                       │
-│   │  POZIOM 1: ParentId → Plan      │  Strategia: który plan najpierw?      │
+│   │  POZIOM 1: DebtId → Plan        │  Strategia: który plan najpierw?      │
 │   │  (pośrednio przez cząstki)      │  np. HIGHEST_DEBT, OLDEST_FIRST       │
 │   └─────────────────────────────────┘                                       │
 │         │                                                                   │
@@ -996,7 +996,7 @@ De facto Payment Resolution mógłby obsługiwać **dwa poziomy mapowania**:
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Gdy dłużnik ma wiele DebtPartów pod jednym `parentId`, Payment Resolution wybiera **który plan** spłacać - pośrednio przechodząc przez cząstki, ale z perspektywy API to jedno mapowanie: `parentId` → `RepaymentPlan`.
+Gdy dłużnik ma wiele DebtPartów pod jednym `debtId`, Payment Resolution wybiera **który plan** spłacać - pośrednio przechodząc przez cząstki, ale z perspektywy API to jedno mapowanie: `debtId` → `RepaymentPlan`.
 
 ---
 
@@ -1016,25 +1016,25 @@ Gdy dłużnik ma wiele DebtPartów pod jednym `parentId`, Payment Resolution wyb
 | [Niesolidarność](#niesolidarność---każdy-odpowiada-za-swoją-część) | `POST /api/debt-part` (×N) | Osobne DebtParty dla każdego |
 | [Mieszana solidarność](#mieszana-solidarność---różna-per-komponent) | `POST /api/debt-part` (×N) | Różne modele per komponent |
 | [Limity](#limity---ograniczenie-odpowiedzialności) | `POST /api/debt-part` | Ograniczenie odpowiedzialności właściciela |
-| [Dodanie komponentu](#dodanie-nowego-komponentu) | `POST .../{id}/components` lub `POST .../by-parent/{parentId}/components` | Doliczenie kosztów (do cząstki lub wszystkich) |
+| [Dodanie komponentu](#dodanie-nowego-komponentu) | `POST .../{id}/components` lub `POST .../by-debt/{debtId}/components` | Doliczenie kosztów (do cząstki lub wszystkich) |
 | [Podział (Split)](#podział-debtpart-split) | `POST /api/debt-part/splitting/{id}` | Dzielenie długu (rozwód, cesja) |
 | [Łączenie (Merge)](#łączenie-debtpartów-merge) | `POST /api/debt-part/merging` | Konsolidacja długów |
 | [Stan cząstki](#sprawdzenie-stanu---kto-ile-jest-winien) | `GET /api/debt-part/find/{id}` | Stan konkretnej cząstki |
-| [Stan całego długu](#sprawdzenie-stanu---kto-ile-jest-winien) | `GET .../find-by-parent/{parentId}/summary` | Zagregowany stan wszystkich cząstek |
+| [Stan całego długu](#sprawdzenie-stanu---kto-ile-jest-winien) | `GET .../find-by-debt/{debtId}/summary` | Zagregowany stan wszystkich cząstek |
 | [Stan historyczny](#sprawdzenie-stanu-na-konkretną-datę) | `GET /api/debt-part/find/{id}?onDate=...` | Stan na konkretną datę |
 | [Historia cząstki](#historia-transformacji-splitmerge) | `GET /api/debt-part/history/{id}` | Historia transformacji cząstki |
-| [Historia długu](#historia-transformacji-splitmerge) | `GET .../history-by-parent/{parentId}` | Połączona historia wszystkich cząstek |
-| [Wyszukiwanie po Parent ID](#wyszukiwanie-po-parent-id) | `GET /api/debt-part/find-by-parent/{parentId}` | Lista cząstek jednego długu |
+| [Historia długu](#historia-transformacji-splitmerge) | `GET .../history-by-debt/{debtId}` | Połączona historia wszystkich cząstek |
+| [Wyszukiwanie po Debt ID](#wyszukiwanie-po-debt-id) | `GET /api/debt-part/find-by-debt/{debtId}` | Lista cząstek jednego długu |
 
-> **Opcja `?includeCosts=true`:** Endpointy sprawdzania stanu (`find/{id}`, `find-by-parent/{parentId}`) mogą opcjonalnie zwracać koszty niewpływające na saldo. Dodaje pola `nonBalanceCosts` i `totalWithCosts` do odpowiedzi.
+> **Opcja `?includeCosts=true`:** Endpointy sprawdzania stanu (`find/{id}`, `find-by-debt/{debtId}`) mogą opcjonalnie zwracać koszty niewpływające na saldo. Dodaje pola `nonBalanceCosts` i `totalWithCosts` do odpowiedzi.
 
 **Costs (niewpływające na saldo):**
 
 | Operacja | Endpoint | Opis |
 |----------|----------|------|
-| Dodanie kosztu | `POST /api/costs` | Koszt do parentId lub debtPartId |
+| Dodanie kosztu | `POST /api/costs` | Koszt do debtId lub debtPartId |
 | Usunięcie kosztu | `DELETE /api/costs/{costId}` | Anulowanie kosztu |
-| Lista kosztów (dług) | `GET /api/costs/by-parent/{parentId}` | Koszty całego długu |
+| Lista kosztów (dług) | `GET /api/costs/by-debt/{debtId}` | Koszty całego długu |
 | Lista kosztów (cząstka) | `GET /api/costs/by-debt-part/{debtPartId}` | Koszty konkretnej cząstki |
 
 **ProductCatalog:**
@@ -1069,7 +1069,7 @@ Gdy dłużnik ma wiele DebtPartów pod jednym `parentId`, Payment Resolution wyb
 | Pobranie strategii | `GET /api/payment-resolution/strategy/{debtorId}` | Aktualna strategia |
 | Lista strategii | `GET /api/payment-resolution/strategies` | Dostępne strategie |
 | Historia wpłat | `GET /api/payments/by-debt-part/{debtPartId}` | Wpłaty na cząstkę |
-| Historia wpłat (dług) | `GET /api/payments/by-parent/{parentId}` | Wpłaty na cały dług |
+| Historia wpłat (dług) | `GET /api/payments/by-debt/{debtId}` | Wpłaty na cały dług |
 
 **Billing:**
 
@@ -1093,11 +1093,11 @@ POST /api/debt-part
 
 **Request:**
 
-Proces przekazuje `parentId` - swój identyfikator długu biznesowego.
+Proces przekazuje `debtId` - swój identyfikator długu biznesowego.
 
 ```json
 {
-  "parentId": "KREDYT-2024-00123",
+  "debtId": "KREDYT-2024-00123",
   "name": "kredyt-hipoteczny-123",
   "components": {
     "PRINCIPAL": 50000.00,
@@ -1126,12 +1126,12 @@ Proces przekazuje `parentId` - swój identyfikator długu biznesowego.
 
 **Response (201 Created):**
 
-Core zwraca `debtPartId` - unikalny identyfikator cząstki. Proces zapamiętuje mapowanie: `debtPartId` ↔ `parentId`.
+Core zwraca `debtPartId` - unikalny identyfikator cząstki. Proces zapamiętuje mapowanie: `debtPartId` ↔ `debtId`.
 
 ```json
 {
   "debtPartId": "dp-aaaa-1111-xxxx",
-  "parentId": "KREDYT-2024-00123"
+  "debtId": "KREDYT-2024-00123"
 }
 ```
 
@@ -1143,7 +1143,7 @@ Gdy kilku dłużników odpowiada solidarnie (każdy za całość), podajemy ich 
 
 ```json
 {
-  "parentId": "KREDYT-2024-00456",
+  "debtId": "KREDYT-2024-00456",
   "name": "kredyt-solidarny-malzenstwo",
   "components": {
     "PRINCIPAL": 100000.00,
@@ -1171,12 +1171,12 @@ Jan i Anna są solidarnie odpowiedzialni - każdy z nich widzi pełne 100 000 PL
 #### Niesolidarność - każdy odpowiada za swoją część
 
 Gdy dłużnicy odpowiadają **niesolidarnie** (każdy tylko za swoją część), tworzymy **osobne DebtParty**.
-Oba mają ten sam `parentId` - procesy wiedzą, że to ten sam dług biznesowy.
+Oba mają ten sam `debtId` - procesy wiedzą, że to ten sam dług biznesowy.
 
 **DebtPart dla ABC Sp. z o.o. - 60% długu:**
 ```json
 {
-  "parentId": "LEASING-2024-00789",
+  "debtId": "LEASING-2024-00789",
   "name": "abc-spolka-udzial",
   "components": {
     "PRINCIPAL": 60000.00
@@ -1194,7 +1194,7 @@ Oba mają ten sam `parentId` - procesy wiedzą, że to ten sam dług biznesowy.
 **DebtPart dla XYZ S.A. - 40% długu:**
 ```json
 {
-  "parentId": "LEASING-2024-00789",
+  "debtId": "LEASING-2024-00789",
   "name": "xyz-spolka-udzial",
   "components": {
     "PRINCIPAL": 40000.00
@@ -1211,7 +1211,7 @@ Oba mają ten sam `parentId` - procesy wiedzą, że to ten sam dług biznesowy.
 
 ABC Sp. z o.o. widzi tylko swoje 60 000 PLN, XYZ S.A. widzi tylko swoje 40 000 PLN.
 Każdy DebtPart jest obsługiwany niezależnie - mogą mieć różne harmonogramy spłat, różne procesy.
-Ten sam `parentId` pozwala odpytać Core o wszystkie cząstki tego długu.
+Ten sam `debtId` pozwala odpytać Core o wszystkie cząstki tego długu.
 
 > **Decyzja architektoniczna:** Niesolidarność modelujemy przez osobne DebtParty, nie przez
 > wiele shares w jednym DebtPart. Dzięki temu każda część długu może być niezależnie
@@ -1224,12 +1224,12 @@ Ten sam `parentId` pozwala odpytać Core o wszystkie cząstki tego długu.
 Przykład: małżeństwo gdzie kapitał dzielony jest nierówno (np. z intercyzy), ale za odsetki odpowiadają solidarnie.
 
 W tym przypadku tworzymy **dwa osobne DebtParty dla kapitału** (niesolidarność) i **jeden wspólny dla odsetek** (solidarność).
-Wszystkie trzy mają ten sam `parentId`:
+Wszystkie trzy mają ten sam `debtId`:
 
 **Kapitał Jana (60%):**
 ```json
 {
-  "parentId": "KREDYT-2024-00456",
+  "debtId": "KREDYT-2024-00456",
   "name": "jan-kapital",
   "components": { "PRINCIPAL": 60000.00 },
   "sharesDefinitions": [
@@ -1241,7 +1241,7 @@ Wszystkie trzy mają ten sam `parentId`:
 **Kapitał Anny (40%):**
 ```json
 {
-  "parentId": "KREDYT-2024-00456",
+  "debtId": "KREDYT-2024-00456",
   "name": "anna-kapital",
   "components": { "PRINCIPAL": 40000.00 },
   "sharesDefinitions": [
@@ -1253,7 +1253,7 @@ Wszystkie trzy mają ten sam `parentId`:
 **Odsetki solidarnie (oboje):**
 ```json
 {
-  "parentId": "KREDYT-2024-00456",
+  "debtId": "KREDYT-2024-00456",
   "name": "odsetki-solidarne",
   "components": { "INTEREST": 10000.00 },
   "sharesDefinitions": [
@@ -1273,7 +1273,7 @@ Solidarność z limitem - poręczyciel (Marek Nowak) odpowiada solidarnie z gł�
 
 ```json
 {
-  "parentId": "KREDYT-2024-00999",
+  "debtId": "KREDYT-2024-00999",
   "name": "kredyt-z-poreczeniem",
   "components": {
     "PRINCIPAL": 100000.00
@@ -1312,10 +1312,10 @@ POST /api/debt-part/{debtPartId}/components
 
 **Wariant 2: Do wszystkich cząstek danego długu**
 ```
-POST /api/debt-part/by-parent/{parentId}/components
+POST /api/debt-part/by-debt/{debtId}/components
 ```
 
-Użycie `parentId` doda komponent do **wszystkich** DebtPartów pod tym długiem biznesowym.
+Użycie `debtId` doda komponent do **wszystkich** DebtPartów pod tym długiem biznesowym.
 
 **Request:**
 ```json
@@ -1377,14 +1377,14 @@ POST /api/debt-part/splitting/{debtPartId}
 
 **Response (201 Created):**
 
-Domyślnie nowe DebtParty **dziedziczą `parentId`** z oryginału. Można też przekazać nowy `parentId` w request, jeśli split tworzy nowy dług biznesowy (np. cesja na inny podmiot).
+Domyślnie nowe DebtParty **dziedziczą `debtId`** z oryginału. Można też przekazać nowy `debtId` w request, jeśli split tworzy nowy dług biznesowy (np. cesja na inny podmiot).
 
 ```json
 {
   "debtParts": [
     {
       "debtPartId": "dp-jan-rozwod-001",
-      "parentId": "KREDYT-2024-00456",
+      "debtId": "KREDYT-2024-00456",
       "name": "jan-kowalski-po-rozwodzie",
       "mainBalances": [
         { "component": "PRINCIPAL", "amount": -60000.00 },
@@ -1393,7 +1393,7 @@ Domyślnie nowe DebtParty **dziedziczą `parentId`** z oryginału. Można też p
     },
     {
       "debtPartId": "dp-anna-rozwod-002",
-      "parentId": "KREDYT-2024-00456",
+      "debtId": "KREDYT-2024-00456",
       "name": "anna-kowalska-po-rozwodzie",
       "mainBalances": [
         { "component": "PRINCIPAL", "amount": -40000.00 },
@@ -1420,11 +1420,11 @@ POST /api/debt-part/merging
 
 **Request:**
 
-Proces **może** podać nowy `parentId` dla skonsolidowanego długu (np. przy konsolidacji różnych długów w ugodę). Jeśli łączymy cząstki tego samego długu, można zachować oryginalny `parentId`.
+Proces **może** podać nowy `debtId` dla skonsolidowanego długu (np. przy konsolidacji różnych długów w ugodę). Jeśli łączymy cząstki tego samego długu, można zachować oryginalny `debtId`.
 
 ```json
 {
-  "parentId": "UGODA-2024-00001",
+  "debtId": "UGODA-2024-00001",
   "mergeUnderName": "tomasz-wisniewski-konsolidacja",
   "idsToMerge": [
     "dp-kredyt-gotowkowy-111",
@@ -1443,7 +1443,7 @@ Proces **może** podać nowy `parentId` dla skonsolidowanego długu (np. przy ko
 {
   "debtPart": {
     "debtPartId": "dp-konsolidacja-001",
-    "parentId": "UGODA-2024-00001",
+    "debtId": "UGODA-2024-00001",
     "name": "tomasz-wisniewski-konsolidacja",
     "mainBalances": [
       { "component": "PRINCIPAL", "amount": -45000.00 },
@@ -1465,16 +1465,16 @@ GET /api/debt-part/find/{debtPartId}
 
 **Wariant 2: Zagregowany stan całego długu biznesowego**
 ```
-GET /api/debt-part/find-by-parent/{parentId}/summary
+GET /api/debt-part/find-by-debt/{debtId}/summary
 ```
 
-Zwraca sumę wszystkich cząstek pod danym `parentId` - widok całego długu biznesowego.
+Zwraca sumę wszystkich cząstek pod danym `debtId` - widok całego długu biznesowego.
 
 **Response (dla pojedynczej cząstki):**
 ```json
 {
   "debtPartId": "dp-aaaa-1111-xxxx",
-  "parentId": "KREDYT-2024-00123",
+  "debtId": "KREDYT-2024-00123",
   "name": "kredyt-hipoteczny-123",
   "mainBalances": [
     { "component": "PRINCIPAL", "amount": -50000.00 },
@@ -1515,10 +1515,10 @@ GET /api/debt-part/history/{debtPartId}
 
 **Wariant 2: Połączona historia całego długu biznesowego**
 ```
-GET /api/debt-part/history-by-parent/{parentId}
+GET /api/debt-part/history-by-debt/{debtId}
 ```
 
-Zwraca sumę historii wszystkich cząstek pod danym `parentId` - pełna historia transformacji długu.
+Zwraca sumę historii wszystkich cząstek pod danym `debtId` - pełna historia transformacji długu.
 
 **Response:**
 ```json
@@ -1544,23 +1544,23 @@ Zwraca sumę historii wszystkich cząstek pod danym `parentId` - pełna historia
 
 ---
 
-#### Wyszukiwanie po Parent ID
+#### Wyszukiwanie po Debt ID
 
 Pobranie wszystkich DebtPartów należących do tego samego długu biznesowego:
 
 ```
-GET /api/debt-part/find-by-parent/{parentId}
+GET /api/debt-part/find-by-debt/{debtId}
 ```
 
 **Przykład:**
 ```
-GET /api/debt-part/find-by-parent/KREDYT-2024-00456
+GET /api/debt-part/find-by-debt/KREDYT-2024-00456
 ```
 
 **Response:**
 ```json
 {
-  "parentId": "KREDYT-2024-00456",
+  "debtId": "KREDYT-2024-00456",
   "debtParts": [
     {
       "debtPartId": "dp-jan-rozwod-001",
@@ -1660,7 +1660,7 @@ A: Wywołaj utworzenie DebtPart z konkretnymi komponentami:
 ```
 POST /api/debt-part
 {
-  "parentId": "SPRAWA-SADOWA-2024-001",
+  "debtId": "SPRAWA-SADOWA-2024-001",
   "name": "wyrok-kowalski",
   "components": {
     "PRINCIPAL_ADJUDICATED": 50000.00,
@@ -1710,7 +1710,7 @@ Jeśli nie podano `debtPartId` ani `repaymentPlanId`:
 
 {
   "amount": 5000.00,
-  "parentId": "KREDYT-2024-00123",      // tylko dług biznesowy
+  "debtId": "KREDYT-2024-00123",      // tylko dług biznesowy
   "paidBy": "jan-kowalski-id",
   "paidAt": "2024-03-15"
 }
@@ -1860,7 +1860,7 @@ Czy to będzie zmiana cennika czy producttype - to wewnętrzna decyzja zespołu 
 A: Obecnie dostępne widoki:
 - **Historia długu/cząstki** → [Historia i audyt](#historia-i-audyt)
 - **Stan na dowolny moment** → `GET /api/debt-part/find/{id}?onDate=...`
-- **Zagregowany stan** → `GET /api/debt-part/find-by-parent/{parentId}/summary`
+- **Zagregowany stan** → `GET /api/debt-part/find-by-debt/{debtId}/summary`
 
 **Jeśli potrzebne dane nie są jeszcze widoczne** w istniejących widokach - sprecyzujcie jakie dane potrzebujecie, a Core je wystawi.
 
@@ -1882,7 +1882,7 @@ To po prostu utworzenie DebtPart:
 // Proces polubowny importuje dług i tworzy cząstkę
 POST /api/debt-part
 {
-  "parentId": "KREDYT-2024-00123",
+  "debtId": "KREDYT-2024-00123",
   "name": "polubowne-kowalski",
   "components": {
     "PRINCIPAL": 50000.00,
@@ -1902,7 +1902,7 @@ Również utworzenie DebtPart - proces po swojej stronie wie jakie kwoty zebrać
 // Proces sądowy zbiera dane i tworzy cząstkę
 POST /api/debt-part
 {
-  "parentId": "KREDYT-2024-00123",
+  "debtId": "KREDYT-2024-00123",
   "name": "sadowe-kowalski",
   "components": {
     "PRINCIPAL": 50000.00,           // stare obciążenie 1
@@ -1973,7 +1973,7 @@ Sprecyzujcie co dokładnie oznacza "zakończenie" w waszym procesie.
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                                                                             │
-│   Parent ID: "KREDYT-2024-00123"                                            │
+│   Debt ID: "KREDYT-2024-00123"                                            │
 │                                                                             │
 │   ┌─────────────────────────────┐    ┌─────────────────────────────┐        │
 │   │  DebtPart: dp-polubowne-001 │    │  DebtPart: dp-komornicze-001│        │
@@ -1985,7 +1985,7 @@ Sprecyzujcie co dokładnie oznacza "zakończenie" w waszym procesie.
 │   └─────────────────────────────┘    └─────────────────────────────┘        │
 │                                                                             │
 │   Oba postępowania równolegle windykują tego samego dłużnika.               │
-│   Ten sam parentId → procesy wiedzą, że to ten sam dług.                    │
+│   Ten sam debtId → procesy wiedzą, że to ten sam dług.                    │
 │                                                                             │
 │   Timeline:                                                                 │
 │   ─────────────────────────────────────────────────────────────────────     │
@@ -1996,13 +1996,13 @@ Sprecyzujcie co dokładnie oznacza "zakończenie" w waszym procesie.
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-To zarządzanie DebtPartami z tym samym `parentId`:
+To zarządzanie DebtPartami z tym samym `debtId`:
 
 ```
 // Krok 1: Polubowne na pełną kwotę
 POST /api/debt-part
 {
-  "parentId": "KREDYT-2024-00123",
+  "debtId": "KREDYT-2024-00123",
   "name": "polubowne-kowalski",
   "components": { "PRINCIPAL": 1000.00 }
 }
@@ -2011,7 +2011,7 @@ POST /api/debt-part
 // Krok 2: Komornicze na 800 PLN (równolegle)
 POST /api/debt-part
 {
-  "parentId": "KREDYT-2024-00123",   // ten sam parentId!
+  "debtId": "KREDYT-2024-00123",   // ten sam debtId!
   "name": "komornicze-kowalski",
   "components": { "PRINCIPAL": 800.00 }
 }
@@ -2160,7 +2160,7 @@ Sprecyzujcie wymagania, a Core doda odpowiednie API.
 **Q: Jak prześledzić całą historię długu od momentu importu?**
 
 A: Widok historii cząstek/długu to zapewnia. Patrz [Historia i audyt](#historia-i-audyt) poniżej:
-- **Cały dług** → `GET /api/history/by-parent/{parentId}` - historia wszystkich cząstek
+- **Cały dług** → `GET /api/history/by-debt/{debtId}` - historia wszystkich cząstek
 - **Graf transformacji** → `GET /api/debt-part/history/{id}` - skąd powstała, na co się podzieliła
 - **Stan na dowolny moment** → `GET /api/debt-part/find/{id}?onDate=...`
 
@@ -2172,7 +2172,7 @@ A: Widok historii cząstek/długu to zapewnia. Patrz [Historia i audyt](#histori
 
 A: Widok historii cząstek/długu to zapewnia. Patrz [Historia i audyt](#historia-i-audyt) poniżej:
 - **Graf transformacji** → `GET /api/debt-part/history/{id}` - pokaże split/merge między cząstkami
-- **Ten sam parentId** → obie cząstki (polubowna i sądowa) mają wspólny `parentId`, więc można odpytać o całą historię długu: `GET /api/history/by-parent/{parentId}`
+- **Ten sam debtId** → obie cząstki (polubowna i sądowa) mają wspólny `debtId`, więc można odpytać o całą historię długu: `GET /api/history/by-debt/{debtId}`
 
 Przykład: DebtPart polubowny `dp-polubowny-001` został zamknięty, utworzono `dp-sadowy-002` - historia pokaże tę transformację.
 
@@ -2190,7 +2190,7 @@ Dodatkowo Core wystawia rozszerzony widok stanu na dwóch poziomach:
 
 | Poziom | Endpoint | Co zawiera |
 |--------|----------|------------|
-| Cały dług | `GET /api/history/by-parent/{parentId}` | Stan wszystkich cząstek danego długu |
+| Cały dług | `GET /api/history/by-debt/{debtId}` | Stan wszystkich cząstek danego długu |
 | Cząstka | `GET /api/history/by-debt-part/{debtPartId}` | Stan konkretnej cząstki |
 
 **Stan na konkretną datę:**
@@ -2216,7 +2216,7 @@ Wtedy odpowiedź uwzględnia wszystkie operacje do podanej daty (włącznie).
 ```json
 {
   "debtPartId": "dp-aaa-111",
-  "parentId": "KREDYT-2024-00123",
+  "debtId": "KREDYT-2024-00123",
   "asOfDate": "2024-03-15",
   "balances": {
     "PRINCIPAL": -45000.00,
