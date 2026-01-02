@@ -533,12 +533,12 @@ Kapitał procesowany sądownie, odsetki polubownie (np. po wyroku sądowym dotyc
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│   Debt ID: "KREDYT-2024-00123"                                │
+│   Debt ID: "KREDYT-2024-00123"                                  │
 │   Kwota: 100 000 PLN kapitału + 10 000 PLN odsetek              │
 │                                                                 │
 │   ┌───────────────────────────┐ ┌───────────────────────────┐   │
 │   │  DebtPart ID: "dp-aaa"    │ │  DebtPart ID: "dp-bbb"    │   │
-│   │  Debt ID: "KREDYT-..."  │ │  Debt ID: "KREDYT-..."  │   │
+│   │  Debt ID: "KREDYT-..."    │ |  Debt ID: "KREDYT-..."    │   │
 │   │                           │ │                           │   │
 │   │  PRINCIPAL: 100 000 PLN   │ │  INTEREST: 10 000 PLN     │   │
 │   │                           │ │                           │   │
@@ -546,7 +546,7 @@ Kapitał procesowany sądownie, odsetki polubownie (np. po wyroku sądowym dotyc
 │   │  (tylko kapitał)          │ │  (tylko odsetki)          │   │
 │   └───────────────────────────┘ └───────────────────────────┘   │
 │                                                                 │
-│   Ten sam Debt ID → różne komponenty tego samego długu        │
+│   Ten sam Debt ID → różne komponenty tego samego długu          │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -563,6 +563,43 @@ To odpowiedzialność procesów, żeby wiedzieć:
 - Kiedy zamknąć jeden proces po sukcesie drugiego
 
 Core dostarcza narzędzia do zarządzania cząstkami - logika biznesowa jest po stronie procesów.
+
+---
+
+
+
+### Saldo na długu
+
+W obliczu "nakładania" debt partów trzeba pochylić się nad odpowiedzią na pytanie: 
+
+**Jakie jest saldo na długu?**
+
+Przy **naiwnym podejściu** saldo na długu to suma wszystkich pieniędzy na DebtPartach w danym Długu - jednak przy syuacji przedstawionej w [Przypadku 3: Nakładające się (160% ≠ 100%)](#przypadek-3-dług--2-debtparty-nakładające-się---nie-sumują-się-do-100) zadłużenie klienta wzrosłoby do o 60% tylko dlatego, że organizacja zdecydowała się odzyskiwać część długu polubownie. 
+
+```
+❌  Naiwne podejście: Saldo długu = suma wszystkich debtPartów
+
+    Debt ID: "KREDYT-2024-00123" 
+      DebtPart ID: "dp-aaa" [Principal 10 000PLN] //proces polubowny
+      DebtPart ID: "dp-bbb" [WPS        5 000PLN] //proces sądowy
+
+    balance("KREDYT-2024-00123") = 15 000PLN
+```
+```
+✅ Poprawne podejście: Saldo długu jest konfigurowalne - to wycinek procesowanych kwot w ramach długu
+
+   Debt ID: "KREDYT-2024-00123" 
+      DebtPart ID: "dp-aaa" [Principal 10 000PLN] //proces polubowny
+      DebtPart ID: "dp-bbb" [WPS        5 000PLN] //proces sądowy
+
+    // saldo jest konfigurowane MANUALNIE
+    // złożony pozew przed wyrokiem sądu, więc WPS nie wlicza się do salda
+    configureBalance("KREDYT-2024-00123", filter().excludeEntries().forComponent("WPS"))
+
+    balance("KREDYT-2024-00123") = 10 000PLN
+```
+
+**Core sam z siebie nie wie, które DebtParty/komponenty wliczają sie w saldo długu** - to procesy konfigurują saldo na długu.
 
 ---
 
@@ -735,6 +772,12 @@ Niektóre elementy aktywują się po spełnieniu **warunku** (Condition):
 | `RepaymentsOnTime` | N terminowych wpłat |
 | `RepaymentsDelayed` | N opóźnionych wpłat |
 | `ManualConfirmation` | Ręczne potwierdzenie operatora |
+
+#### Kiedy używać których typów warunków? 
+
+Core jest źródłem prawdy o płatnościach - on odpowiada na pytanie czy płatności zostały rozliczone na czas, dlatego warunki `RepaymentsOnTime` i `RepaymentsDelayed` są zdefiniowane explicite. Wszystkie warunki, dla których źródłem prawdy jest moduł Billing powinny zostać obsłużone przez dodanie nowego typu.
+
+`ManualConfirmation` jest typem przewidzianym do obsługi warunków dla których źródłem prawdy są konteksty poza Core jak np. "Zgoda na wysyłkę komunikatów marketingowych" czy "Założenie aplikacji mobilnej". Dla warunków tego typu to **klienty** Core'a informują kontekst Repaymentów o spełnieniu danego warunku.
 
 ---
 
