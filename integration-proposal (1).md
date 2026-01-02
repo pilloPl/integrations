@@ -570,36 +570,54 @@ Core dostarcza narzędzia do zarządzania cząstkami - logika biznesowa jest po 
 
 ### Saldo na długu
 
-W obliczu "nakładania" debt partów trzeba pochylić się nad odpowiedzią na pytanie: 
+#### Problem
 
-**Jakie jest saldo na długu?**
+Gdy DebtParty nakładają się (jak w [Przypadku 3](#przypadek-3-dług--2-debtparty-nakładające-się---nie-sumują-się-do-100)), pojawia się pytanie: **jak obliczyć saldo całego długu?**
 
-Przy **naiwnym podejściu** saldo na długu to suma wszystkich pieniędzy na DebtPartach w danym Długu - jednak przy syuacji przedstawionej w [Przypadku 3: Nakładające się (160% ≠ 100%)](#przypadek-3-dług--2-debtparty-nakładające-się---nie-sumują-się-do-100) zadłużenie klienta wzrosłoby do o 60% tylko dlatego, że organizacja zdecydowała się odzyskiwać część długu polubownie. 
+Naiwne sumowanie wszystkich DebtPartów prowadzi do błędnych wyników:
 
 ```
-❌  Naiwne podejście: Saldo długu = suma wszystkich debtPartów
+Debt ID: "KREDYT-2024-00123"
+  ├── DebtPart "dp-aaa" [Principal 10 000 PLN]  → proces polubowny
+  └── DebtPart "dp-bbb" [WPS        5 000 PLN]  → proces sądowy
 
-    Debt ID: "KREDYT-2024-00123" 
-      DebtPart ID: "dp-aaa" [Principal 10 000PLN] //proces polubowny
-      DebtPart ID: "dp-bbb" [WPS        5 000PLN] //proces sądowy
-
-    balance("KREDYT-2024-00123") = 15 000PLN
-```
-```
-✅ Poprawne podejście: Saldo długu jest konfigurowalne - to wycinek procesowanych kwot w ramach długu
-
-   Debt ID: "KREDYT-2024-00123" 
-      DebtPart ID: "dp-aaa" [Principal 10 000PLN] //proces polubowny
-      DebtPart ID: "dp-bbb" [WPS        5 000PLN] //proces sądowy
-
-    // saldo jest konfigurowane MANUALNIE
-    // złożony pozew przed wyrokiem sądu, więc WPS nie wlicza się do salda
-    configureBalance("KREDYT-2024-00123", filter().excludeEntries().forComponent("WPS"))
-
-    balance("KREDYT-2024-00123") = 10 000PLN
+❌ Naiwne podejście: 10 000 + 5 000 = 15 000 PLN
+   Problem: zadłużenie klienta "rośnie" o 50% tylko dlatego,
+   że organizacja zdecydowała się część długu odzyskiwać sądownie
 ```
 
-**Core sam z siebie nie wie, które DebtParty/komponenty wliczają sie w saldo długu** - to procesy konfigurują saldo na długu.
+#### Rozwiązanie: konfigurowalne saldo
+
+Saldo długu nie jest obliczane automatycznie — **procesy same decydują, które komponenty wliczają się do salda**.
+
+```
+Debt ID: "KREDYT-2024-00123"
+  ├── DebtPart "dp-aaa" [Principal 10 000 PLN]  ✓ wliczone do salda
+  └── DebtPart "dp-bbb" [WPS        5 000 PLN]  ✗ wykluczone (pozew w toku, przed wyrokiem)
+
+✅ Saldo po konfiguracji: 10 000 PLN
+```
+
+#### API
+
+Procesy konfigurują saldo przez endpoint:
+
+```http
+POST /api/debt/configure-balance
+
+{
+  "debtId": "KREDYT-2024-00123",
+  "accountEntryFilter": {
+    "fromDate": null,
+    "toDate": null,
+    "accountDescContaining": null,
+    "accountIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+    "metaData": {
+      "component": "Principal"
+    }
+  }
+}
+```
 
 ---
 
@@ -773,11 +791,62 @@ Niektóre elementy aktywują się po spełnieniu **warunku** (Condition):
 | `RepaymentsDelayed` | N opóźnionych wpłat |
 | `ManualConfirmation` | Ręczne potwierdzenie operatora |
 
-#### Kiedy używać których typów warunków? 
+#### Kiedy używać których typów warunków?
 
-Core jest źródłem prawdy o płatnościach - on odpowiada na pytanie czy płatności zostały rozliczone na czas, dlatego warunki `RepaymentsOnTime` i `RepaymentsDelayed` są zdefiniowane explicite. Wszystkie warunki, dla których źródłem prawdy jest moduł Billing powinny zostać obsłużone przez dodanie nowego typu.
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│   Kto jest źródłem prawdy o spełnieniu warunku?                             │
+│   ═════════════════════════════════════════════                             │
+│                                                                             │
+│                         ┌──────────────────┐                                │
+│                         │ Nowy warunek do  │                                │
+│                         │   zdefiniowania  │                                │
+│                         └────────┬─────────┘                                │
+│                                  │                                          │
+│                                  ▼                                          │
+│                    ┌─────────────────────────────┐                          │
+│                    │  Kto decyduje o spełnieniu? │                          │
+│                    └─────────────────────────────┘                          │
+│                                  │                                          │
+│            ┌─────────────────────┼─────────────────────┐                    │
+│            │                     │                     │                    │
+│            ▼                     ▼                     ▼                    │
+│   ┌────────────────┐   ┌────────────────┐   ┌────────────────────┐          │
+│   │  Core/Billing  │   │  Core/Billing  │   │ Zewnętrzny system  │          │
+│   │  (terminowe    │   │  (opóźnione    │   │ (CRM, aplikacja    │          │
+│   │   wpłaty)      │   │   wpłaty)      │   │  mobilna, etc.)    │          │
+│   └───────┬────────┘   └───────┬────────┘   └─────────┬──────────┘          │
+│           │                    │                      │                     │
+│           ▼                    ▼                      ▼                     │
+│   ┌────────────────┐   ┌────────────────┐   ┌────────────────────┐          │
+│   │ RepaymentsOn   │   │ Repayments     │   │ ManualConfirmation │          │
+│   │ Time           │   │ Delayed        │   │                    │          │
+│   └────────────────┘   └────────────────┘   └────────────────────┘          │
+│           │                    │                      │                     │
+│           ▼                    ▼                      ▼                     │
+│   ┌────────────────────────────────────────────────────────────────┐        │
+│   │                         Kierunek przepływu                     │        │
+│   ├────────────────────────────────────────────────────────────────┤        │
+│   │  Core → RepaymentPlan   Core → RepaymentPlan   Klient → Core   │        │
+│   │  (Core sam liczy)       (Core sam liczy)       (zewnętrzne     │        │
+│   │                                                 powiadomienie) │        │
+│   └────────────────────────────────────────────────────────────────┘        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-`ManualConfirmation` jest typem przewidzianym do obsługi warunków dla których źródłem prawdy są konteksty poza Core jak np. "Zgoda na wysyłkę komunikatów marketingowych" czy "Założenie aplikacji mobilnej". Dla warunków tego typu to **klienty** Core'a informują kontekst Repaymentów o spełnieniu danego warunku.
+**Zasada wyboru typu warunku:**
+
+| Typ | Źródło prawdy | Przykłady | Kto informuje? |
+|-----|---------------|-----------|----------------|
+| `RepaymentsOnTime` | Core/Billing | "3 terminowe wpłaty" | Core sam weryfikuje |
+| `RepaymentsDelayed` | Core/Billing | "2 opóźnione wpłaty" | Core sam weryfikuje |
+| `ManualConfirmation` | Zewnętrzny system | "Zgoda marketingowa", "Instalacja aplikacji" | Klient Core'a wywołuje API |
+
+**Kiedy dodać nowy typ?**
+- Jeśli źródłem prawdy jest Billing/Core, ale istniejące typy nie pasują → **dodaj nowy typ** (np. `TotalAmountPaid`, `ConsecutivePayments`)
+- Jeśli źródłem prawdy jest system zewnętrzny → użyj `ManualConfirmation`
 
 ---
 
