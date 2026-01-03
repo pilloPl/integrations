@@ -1732,6 +1732,46 @@ Proces **może** podać nowy `debtId` dla skonsolidowanego długu (np. przy kons
 
 ---
 
+#### Historia transformacji (Split/Merge)
+
+Pełna genealogia DebtPart - skąd powstał, na co się podzielił.
+
+**Wariant 1: Historia konkretnej cząstki**
+```
+GET /api/debt-part/history/{debtPartId}
+```
+
+**Wariant 2: Połączona historia całego długu biznesowego**
+```
+GET /api/debt-part/history-by-debt/{debtId}
+```
+
+Zwraca sumę historii wszystkich cząstek pod danym `debtId` - pełna historia transformacji długu.
+
+**Response:**
+```json
+{
+  "transitions": [
+    [
+      {
+        "from": "dp-solidarny-malzenstwo-001",
+        "to": "dp-jan-rozwod-001",
+        "description": "split",
+        "occurredAt": "2024-03-15T10:30:00Z"
+      },
+      {
+        "from": "dp-solidarny-malzenstwo-001",
+        "to": "dp-anna-rozwod-002",
+        "description": "split",
+        "occurredAt": "2024-03-15T10:30:00Z"
+      }
+    ]
+  ]
+}
+```
+
+---
+
 #### Sprawdzenie stanu cząstki długu (DebtPart)
 
 ```
@@ -1774,46 +1814,6 @@ Zwraca stan DebtPart na dzień 15 czerwca 2024 (stan historyczny).
 
 ---
 
-#### Historia transformacji (Split/Merge)
-
-Pełna genealogia DebtPart - skąd powstał, na co się podzielił.
-
-**Wariant 1: Historia konkretnej cząstki**
-```
-GET /api/debt-part/history/{debtPartId}
-```
-
-**Wariant 2: Połączona historia całego długu biznesowego**
-```
-GET /api/debt-part/history-by-debt/{debtId}
-```
-
-Zwraca sumę historii wszystkich cząstek pod danym `debtId` - pełna historia transformacji długu.
-
-**Response:**
-```json
-{
-  "transitions": [
-    [
-      {
-        "from": "dp-solidarny-malzenstwo-001",
-        "to": "dp-jan-rozwod-001",
-        "description": "split",
-        "occurredAt": "2024-03-15T10:30:00Z"
-      },
-      {
-        "from": "dp-solidarny-malzenstwo-001",
-        "to": "dp-anna-rozwod-002",
-        "description": "split",
-        "occurredAt": "2024-03-15T10:30:00Z"
-      }
-    ]
-  ]
-}
-```
-
----
-
 #### Wyszukiwanie po Debt ID
 
 Pobranie wszystkich DebtPartów należących do tego samego długu biznesowego:
@@ -1850,9 +1850,9 @@ Kluczowe dla procesów - pozwala odpytać, które cząstki należą do tego same
 
 ---
 
-#### Sprawdzanie balansu
+#### Sprawdzanie balansu (klienta/długu)
 
-Endpointy do pobierania salda na różnych poziomach agregacji:
+Endpointy do pobierania salda na różnych poziomach agregacji. Wszystkie wspierają opcjonalny parametr `When` do zapytań historycznych.
 
 **Balans całego długu:**
 ```
