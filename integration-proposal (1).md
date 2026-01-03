@@ -677,6 +677,154 @@ GET /api/costs/by-debt/{debtId}
 
 ---
 
+### Rejestrowanie i matchowanie obciążeń (Charges)
+@MichalMac prosba o weryfikacje 
+
+Obciążenia (charges) to koszty, które **wpływają na saldo księgowe** i wymagają powiązania z konkretną cząstką długu (debtPart) oraz właścicielem (owner). Typowe przykłady to koszty sądowe, koszty egzekucji, opłaty prawne.
+
+#### Ogólny flow
+
+```
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐
+│  Proces         │  │  Core.Products  │  │  Core.Charges   │  │  Core.FinanceEngine │
+│  (np. Legal)    │  │                 │  │                 │  │                     │
+└────────┬────────┘  └────────┬────────┘  └────────┬────────┘  └──────────┬──────────┘
+         │                    │                    │                      │
+         │ 0. POST /products  │                    │                      │
+         │ (AmountModifier)   │                    │                      │
+         │───────────────────>│                    │                      │
+         │                    │                    │                      │
+         │ productId          │                    │                      │
+         │<───────────────────│                    │                      │
+         │                    │                    │                      │
+         │ 1. POST /api/charges                    │                      │
+         │ (rejestracja dokumentu)                 │                      │
+         │────────────────────────────────────────>│                      │
+         │                    │                    │                      │
+         │ 2. Response: chargeId                   │                      │
+         │<────────────────────────────────────────│                      │
+         │                    │                    │                      │
+         │ 3. Match charge    │                    │                      │
+         │ (debtPartId, ownerId)                   │                      │
+         │───────────────────────────────────────────────────────────────>│
+         │                    │                    │                      │
+         │                    │                    │  4. GET charge doc   │
+         │                    │                    │<─────────────────────│
+         │                    │                    │                      │
+         │                    │                    │  5. Charge data      │
+         │                    │                    │─────────────────────>│
+         │                    │                    │                      │
+         │                    │                    │     6. Utworzenie    │
+         │                    │                    │        wpisów na     │
+         │                    │                    │        kontach       │
+```
+
+#### Krok 0: Utworzenie elementu produktowego (jeśli nie istnieje)
+
+Przed rejestracją obciążenia, musi istnieć odpowiedni element produktowy typu `AmountModifier`. Element definiuje, na jaki komponent salda wpłynie obciążenie:
+
+```json
+POST /api/product-catalog/elements
+{
+  "name": "COURT_COSTS",
+  "parameters": {
+    "category": "AmountModifier",
+    "targetComponent": "Koszty"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "elementId": "00000000-0000-0000-0000-000000000001"
+}
+```
+
+> **Uwaga:** Elementy produktowe są zazwyczaj tworzone raz i wielokrotnie używane. Ten krok wykonuje się tylko przy pierwszym użyciu danego typu kosztu.
+
+#### Krok 1: Rejestracja dokumentu obciążenia
+
+Proces rejestruje dokument obciążenia w module `Core.Charges`:
+
+```json
+POST /api/charges
+{
+  // @MichalMac - moim zdaniem to przypisanie do debtu jest niepotrzebne tutaj?
+  "debtId": "DEBT-1",
+  "currency": "PLN",
+  "chargeDate": "2025-12-10T15:44:58.655Z",
+  "items": [
+    {
+      // productId produktu (np. koszty sądowe)
+      "productId": "00000000-0000-0000-0000-000000000001",
+      "quantity": 1.0,
+      "price": {
+        "amount": 2000.0,
+        "currencyCode": "PLN"
+      }
+    }
+  ],
+  "approve": true
+}
+```
+
+**Response:**
+```json
+{
+  "id": "CHARGE-DOC-1"
+}
+```
+
+#### Krok 2: Matchowanie obciążenia do cząstki długu
+
+Po zarejestrowaniu dokumentu, proces wywołuje `Core.FinanceEngine` aby powiązać obciążenie z konkretną cząstką długu i właścicielem:
+
+```json
+POST /api/match-charge
+{
+  // requestId dla idempotencji
+  "requestId": "55A60966-54e9-db74-a8d5-0db90bd4f0fd",
+  "debtPartId": "DEBT-PART-A",
+  "chargeDocumentId": "CHARGE-DOC-1",
+  "ownerId": "OWNER-JAN",
+  // originId - opcjonalnie, identyfikator źródłowy
+  "originId": "LEGAL:b9a6a8d5-66b9-44de-964a-f554fa341c9e"
+}
+```
+
+#### Krok 3: Przetwarzanie przez FinanceEngine
+
+`Core.FinanceEngine`:
+1. Pobiera dokument obciążenia z `Core.Charges`
+2. Na podstawie `price`, `currency`, `quantity` oraz `productId` tworzy odpowiednie wpisy na kontach księgowych
+3. Obciążenie zostaje zaksięgowane na cząstce długu dla wskazanego właściciela
+
+#### Efekt końcowy
+
+Po wykonaniu matchowania, cząstka długu zawiera nowe składniki wynikające z obciążenia:
+
+```
+PRZED:                              PO:
+┌─────────────────────────┐        ┌─────────────────────────┐
+│ Debt Part (DEBT-PART-A) │        │ Debt Part (DEBT-PART-A) │
+│                         │        │                         │
+│ Principal: (Jan, 10k)   │   →    │ Principal: (Jan, 10k)   │
+│                         │        │ Koszty: (Jan, 2k)       │
+└─────────────────────────┘        └─────────────────────────┘
+```
+
+#### Kiedy używać Charges vs Costs?
+
+| Aspekt | Charges (obciążenia) | Costs (koszty) |
+|--------|---------------------|----------------|
+| **Wpływ na saldo** | Tak - wpływa na saldo księgowe | Nie - nie wpływa na saldo |
+| **Matchowanie** | Wymaga matchowania do debtPart + owner | Przypisanie do debtId |
+| **Przykłady** | Koszty sądowe, egzekucyjne, prawne | Koszty monitów, BIK, korespondencji |
+| **Moduł** | Core.Charges + Core.FinanceEngine | Core.Costs |
+
+---
+
 ## 3. Idea produktu
 
 > **Uwaga:** Kategorie produktów, same produkty, ich zbiory, constrainty oraz features będą ustalane wspólnie w miarę potrzeb.
@@ -941,6 +1089,8 @@ RepaymentPlan definiuje:
 - **Jak alokujemy wpłaty** - kolejność komponentów
 - **Jakie modyfikatory** - zniżki, wakacje kredytowe, promocje
 
+Repayment plan może mieć **jednego** lub **wielu**(solidarność) ownerów.
+
 ---
 
 ### Wiele planów na jeden DebtPart
@@ -974,6 +1124,7 @@ RepaymentPlan definiuje:
 | **Wiele aktywnych** | Klient może mieć aktywne plany na różne komponenty (kapitał vs odsetki) |
 | **Zmiana planu** | Dezaktywacja starego, aktywacja nowego - historia zachowana |
 | **Negocjacje** | Tworzenie kolejnych propozycji aż do akceptacji |
+| **Ugoda przy solidarności dłużników** | DebtPart z solidarnością (np. mąż i żona) - mąż podpisuje ugodę i dostaje nowy RepaymentPlan, żona pozostaje na starym planie. Oba plany są rownolegle aktywne na tym samym DebtPart. |
 
 ---
 
@@ -1147,12 +1298,12 @@ Gdy dłużnik ma wiele DebtPartów pod jednym `debtId`, Payment Resolution wybie
 
 **Costs (niewpływające na saldo):**
 
+Koszty operacyjne (monity, BIK, korespondencja, opłaty administracyjne) które nie wpływają na saldo księgowe.
+
 | Operacja | Endpoint | Opis |
 |----------|----------|------|
-| Dodanie kosztu | `POST /api/costs` | Koszt do debtId lub debtPartId |
-| Usunięcie kosztu | `DELETE /api/costs/{costId}` | Anulowanie kosztu |
-| Lista kosztów (dług) | `GET /api/costs/by-debt/{debtId}` | Koszty całego długu |
-| Lista kosztów (cząstka) | `GET /api/costs/by-debt-part/{debtPartId}` | Koszty konkretnej cząstki |
+| Dodanie kosztu | `POST /api/costs` | Koszt do `debtId`. Payload zawiera: payer/payee, items, `approve`, `generateOutgoingPayment` |
+| Lista kosztów (dług) | `GET /api/costs/by-debt/{debtId}` | Wszystkie koszty całego długu |
 
 **ProductCatalog:**
 
@@ -1422,6 +1573,14 @@ Solidarność z limitem - poręczyciel (Marek Nowak) odpowiada solidarnie z gł�
 
 Gdy trzeba doliczyć nowy składnik (np. koszty sądowe, karę).
 
+> **Zalecenie:** Jeśli to możliwe, nowe komponenty należy doliczać jako **obciążenia (charges)** - patrz sekcja [Rejestrowanie i matchowanie obciążeń](#rejestrowanie-i-matchowanie-obciążeń-charges). Flow obciążeń zapewnia:
+> - Pełną ścieżkę audytu (dokument obciążenia)
+> - Spójność z produktami katalogowymi
+>
+> Poniższe API używaj tylko gdy:
+> - Potrzebujesz zdefiniować **niestandardowy udział procentowy** właścicieli w komponencie
+> - Z innych powodów flow obciążeń nie jest odpowiedni (np. migracja danych historycznych)
+
 **Wariant 1: Do konkretnego DebtPart**
 ```
 POST /api/debt-part/{debtPartId}/components
@@ -1521,7 +1680,7 @@ Domyślnie nowe DebtParty **dziedziczą `debtId`** z oryginału. Można też prz
 }
 ```
 
-> **Uwaga:** Suma wartości musi się zgadzać z oryginałem. Dla przypadków z umorzeniem użyj `/splitting/{id}/unchecked`.
+> **Uwaga:** Suma wartości musi się zgadzać z oryginałem. Dla przypadków z umorzeniem lub dodawaniem komponentow w trakcie operacji użyj `/splitting/{id}/unchecked`.
 
 ---
 
@@ -1573,21 +1732,20 @@ Proces **może** podać nowy `debtId` dla skonsolidowanego długu (np. przy kons
 
 ---
 
-#### Sprawdzenie stanu - kto ile jest winien
+#### Sprawdzenie stanu cząstki długu (DebtPart)
 
-**Wariant 1: Stan konkretnej cząstki**
 ```
 GET /api/debt-part/find/{debtPartId}
 ```
 
-**Wariant 2: Zagregowany stan całego długu biznesowego**
+Zwraca szczegółowy stan pojedynczej cząstki z rozbiciem na komponenty i właścicieli (ownerów).
+
+**Przykład:**
 ```
-GET /api/debt-part/find-by-debt/{debtId}/summary
+GET /api/debt-part/find/dp-aaaa-1111-xxxx
 ```
 
-Zwraca sumę wszystkich cząstek pod danym `debtId` - widok całego długu biznesowego.
-
-**Response (dla pojedynczej cząstki):**
+**Response:**
 ```json
 {
   "debtPartId": "dp-aaaa-1111-xxxx",
@@ -1607,17 +1765,12 @@ Zwraca sumę wszystkich cząstek pod danym `debtId` - widok całego długu bizne
 }
 ```
 
----
-
-#### Sprawdzenie stanu na konkretną datę
-
-Stan historyczny - ile było winien w danym momencie:
-
+**Stan na konkretną datę:**
 ```
-GET /api/debt-part/find/{debtPartId}?onDate=2024-06-15T00:00:00Z
+GET /api/debt-part/find/{debtPartId}?OnDate=2024-06-15T00:00:00Z
 ```
 
-Zwraca stan DebtPart na dzień 15 czerwca 2024.
+Zwraca stan DebtPart na dzień 15 czerwca 2024 (stan historyczny).
 
 ---
 
@@ -1694,6 +1847,151 @@ GET /api/debt-part/find-by-debt/KREDYT-2024-00456
 ```
 
 Kluczowe dla procesów - pozwala odpytać, które cząstki należą do tego samego długu.
+
+---
+
+#### Sprawdzanie balansu
+
+Endpointy do pobierania salda na różnych poziomach agregacji:
+
+**Balans całego długu:**
+```
+GET /api/debt/balance/{debtId}
+```
+- `debtId` (UUID, wymagany) - identyfikator długu
+- `When` (datetime, opcjonalny) - punkt w czasie dla którego liczymy balans
+
+**Przykład:**
+```
+GET /api/debt/balance/550e8400-e29b-41d4-a716-446655440000
+```
+
+**Response:**
+```json
+{
+  "debtId": "550e8400-e29b-41d4-a716-446655440000",
+  "balance": { "amount": -110000.00, "currency": "PLN" },
+  "when": "2024-06-15T12:00:00Z",
+  "debtParts": [
+    {
+      "debtPartId": "dp-jan-rozwod-001",
+      "balance": { "amount": -66000.00, "currency": "PLN" }
+    },
+    {
+      "debtPartId": "dp-anna-rozwod-002",
+      "balance": { "amount": -44000.00, "currency": "PLN" }
+    }
+  ]
+}
+```
+
+---
+
+**Balans klienta w konkretnym długu:**
+```
+GET /api/debt/balance/{debtId}/client/{clientId}
+```
+- `debtId` (UUID, wymagany) - identyfikator długu
+- `clientId` (UUID, wymagany) - identyfikator klienta
+- `When` (datetime, opcjonalny) - punkt w czasie dla którego liczymy balans
+
+**Przykład:**
+```
+GET /api/debt/balance/550e8400-e29b-41d4-a716-446655440000/client/client-jan-001
+```
+
+**Response:**
+```json
+{
+  "debtId": "550e8400-e29b-41d4-a716-446655440000",
+  "clientId": "client-jan-001",
+  "balance": { "amount": -66000.00, "currency": "PLN" },
+  "when": "2024-06-15T12:00:00Z",
+  "debtParts": [
+    {
+      "debtPartId": "dp-jan-rozwod-001",
+      "balance": { "amount": -66000.00, "currency": "PLN" }
+    }
+  ]
+}
+```
+
+---
+
+**Balans klienta w konkretnej cząstce długu:**
+```
+GET /api/debt/balance/debtPart/{debtPartId}/client/{clientId}
+```
+- `debtPartId` (UUID, wymagany) - identyfikator cząstki długu
+- `clientId` (UUID, wymagany) - identyfikator klienta
+- `When` (datetime, opcjonalny) - punkt w czasie dla którego liczymy balans
+
+**Przykład:**
+```
+GET /api/debt/balance/debtPart/dp-jan-rozwod-001/client/client-jan-001
+```
+
+**Response:**
+```json
+{
+  "debtPartId": "dp-jan-rozwod-001",
+  "clientId": "client-jan-001",
+  "balance": { "amount": -66000.00, "currency": "PLN" },
+  "when": "2024-06-15T12:00:00Z",
+  "components": [
+    { "name": "kapital", "balance": { "amount": -50000.00, "currency": "PLN" } },
+    { "name": "odsetki-umowne", "balance": { "amount": -10000.00, "currency": "PLN" } },
+    { "name": "odsetki-karne", "balance": { "amount": -6000.00, "currency": "PLN" } }
+  ]
+}
+```
+
+---
+
+**Balans klienta we wszystkich długach:**
+```
+GET /api/debt/balance/client/{clientId}
+```
+- `clientId` (UUID, wymagany) - identyfikator klienta
+- `When` (datetime, opcjonalny) - punkt w czasie dla którego liczymy balans
+
+**Przykład:**
+```
+GET /api/debt/balance/client/client-jan-001
+```
+
+**Response:**
+```json
+{
+  "clientId": "client-jan-001",
+  "totalBalance": { "amount": -166000.00, "currency": "PLN" },
+  "when": "2024-06-15T12:00:00Z",
+  "debts": [
+    {
+      "debtId": "550e8400-e29b-41d4-a716-446655440000",
+      "balance": { "amount": -66000.00, "currency": "PLN" },
+      "debtParts": [
+        {
+          "debtPartId": "dp-jan-rozwod-001",
+          "balance": { "amount": -66000.00, "currency": "PLN" }
+        }
+      ]
+    },
+    {
+      "debtId": "660e8400-e29b-41d4-a716-446655440001",
+      "balance": { "amount": -100000.00, "currency": "PLN" },
+      "debtParts": [
+        {
+          "debtPartId": "dp-jan-kredyt-hipoteczny-001",
+          "balance": { "amount": -100000.00, "currency": "PLN" }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Zwraca sumaryczne saldo klienta ze wszystkich cząstek długu, w których uczestniczy.
 
 ---
 
