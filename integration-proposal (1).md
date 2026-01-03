@@ -993,7 +993,7 @@ Niektóre elementy aktywują się po spełnieniu **warunku** (Condition):
 | `ManualConfirmation` | Zewnętrzny system | "Zgoda marketingowa", "Instalacja aplikacji" | Klient Core'a wywołuje API |
 
 **Kiedy dodać nowy typ?**
-- Jeśli źródłem prawdy jest Billing/Core, ale istniejące typy nie pasują → **dodaj nowy typ** (np. `TotalAmountPaid`, `ConsecutivePayments`)
+- Jeśli źródłem prawdy jest Billing/Core, ale istniejące typy nie pasują → **Core wprowadzi nowy typ** (np. `TotalAmountPaid`, `ConsecutivePayments`)
 - Jeśli źródłem prawdy jest system zewnętrzny → użyj `ManualConfirmation`
 
 ---
